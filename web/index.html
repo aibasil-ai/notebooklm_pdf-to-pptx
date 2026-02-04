@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NotebookLM PDF → PPTX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="bg-grid"></div>
+    <main class="app">
+      <header class="hero">
+        <div class="hero__badge">純瀏覽器轉換 · 不上傳伺服器，目前輸出僅供檢視，內容不可編輯。</div>
+        <h1>NotebookLM PDF → PPTX</h1>
+      </header>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2>選取 PDF</h2>
+          <span class="panel__note">最大檔案 50 MB · 建議桌機 Chrome</span>
+        </div>
+
+        <label class="drop" for="fileInput">
+          <input id="fileInput" type="file" accept="application/pdf,.pdf" />
+          <div class="drop__content">
+            <div class="drop__icon">⬆</div>
+            <div class="drop__text">
+              <strong>拖曳 PDF 到這裡</strong>
+              <span>或點擊選取檔案</span>
+            </div>
+          </div>
+        </label>
+
+        <div class="file-meta" id="fileMeta">
+          <span class="file-meta__name">尚未選取檔案</span>
+          <span class="file-meta__size">—</span>
+        </div>
+
+        <div class="actions">
+          <button id="startBtn" class="btn btn--primary" disabled>開始轉換</button>
+          <button id="cancelBtn" class="btn" disabled>中止</button>
+          <button id="downloadBtn" class="btn btn--ghost" disabled>下載 PPTX</button>
+        </div>
+      </section>
+
+      <section class="status">
+        <div class="status__head">
+          <div>
+            <h3>轉換狀態</h3>
+            <p id="statusLabel">待命中</p>
+          </div>
+          <div class="status__progress">
+            <span id="progressLabel">0%</span>
+          </div>
+        </div>
+
+        <div class="progress">
+          <div id="progressBar" class="progress__bar" style="width: 0%"></div>
+        </div>
+
+        <div class="log" id="log"></div>
+      </section>
+
+      <footer class="foot">
+        <span>轉換在瀏覽器端完成，請勿關閉頁面。</span>
+        <span class="foot__dot">·</span>
+        <span>輸出結果取決於後續解析與渲染模組。</span>
+      </footer>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "notebooklm-pdf-to-ppt-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.2.67",
+    "pptxgenjs": "^3.11.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
