@@ -178,6 +178,58 @@ body {
   color: var(--ink);
 }
 
+.options {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option__label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.option__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.option__range {
+  flex: 1;
+}
+
+.option__value {
+  min-width: 3.2rem;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+}
+
+.option__select {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  font-weight: 600;
+  background: #fff;
+}
+
+.option__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

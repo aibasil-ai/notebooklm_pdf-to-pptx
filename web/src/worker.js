@@ -5,6 +5,10 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url';
 GlobalWorkerOptions.workerSrc = workerSrc;
 
 const POINTS_PER_INCH = 72;
+const DEFAULT_RENDER_SCALE = 2;
+const DEFAULT_JPEG_QUALITY = 0.82;
+const CMAP_URL = new URL('/pdfjs/cmaps/', self.location.origin).href;
+const STANDARD_FONT_URL = new URL('/pdfjs/standard_fonts/', self.location.origin).href;
 let cancelled = false;
 
 self.onmessage = async (event) => {
@@ -25,54 +29,73 @@ self.onmessage = async (event) => {
 async function handleStart(payload) {
   try {
     const { buffer, fileName } = payload;
+    const renderScale = normalizeScale(payload?.scale);
+    const imageFormat = normalizeFormat(payload?.imageFormat);
+    const jpegQuality = normalizeJpegQuality(payload?.jpegQuality);
 
     postStatus('載入 PDF', 5);
-    postLog('啟動瀏覽器端轉換流程。');
+    postLog('啟動瀏覽器端轉換流程（影像模式）。');
 
-    const loadingTask = getDocument({ data: buffer });
-    const pdf = await loadingTask.promise;
+    const pdf = await loadPdf(buffer);
 
     if (cancelled) return postCancelled();
 
-    const pages = [];
     const total = pdf.numPages;
+    const pptx = new pptxgen();
+    const layoutName = 'PDF_LAYOUT';
+    let slideWidthPt = null;
+    let slideHeightPt = null;
 
     for (let index = 1; index <= total; index += 1) {
       if (cancelled) return postCancelled();
 
+      postStatus(`渲染第 ${index} / ${total} 頁`, 10 + Math.round((index / total) * 70));
+      postLog(`渲染第 ${index} 頁影像。`);
+
       const page = await pdf.getPage(index);
       const viewport = page.getViewport({ scale: 1 });
-      const pageHeight = viewport.height;
-      const pageWidth = viewport.width;
 
-      postStatus(`解析第 ${index} / ${total} 頁`, 10 + Math.round((index / total) * 50));
-      postLog(`解析第 ${index} 頁文字內容。`);
-
-      const textContent = await page.getTextContent();
-      const textItems = extractTextItems(textContent, pageHeight);
-
-      let backgroundData = null;
-      try {
-        backgroundData = await renderPageBackground(page);
-      } catch (err) {
-        postLog(`背景渲染失敗：第 ${index} 頁改用純文字輸出。`);
+      if (index === 1) {
+        slideWidthPt = viewport.width;
+        slideHeightPt = viewport.height;
+        pptx.defineLayout({
+          name: layoutName,
+          width: toInches(slideWidthPt),
+          height: toInches(slideHeightPt)
+        });
+        pptx.layout = layoutName;
+        postLog(`投影片尺寸：${slideWidthPt.toFixed(1)}x${slideHeightPt.toFixed(1)} points`);
       }
 
-      pages.push({
-        width: pageWidth,
-        height: pageHeight,
-        textItems,
-        backgroundData
+      let imageData = null;
+      try {
+        imageData = await renderPageImage(page, renderScale, imageFormat, jpegQuality);
+      } finally {
+        page.cleanup();
+      }
+
+      if (cancelled) return postCancelled();
+
+      const slide = pptx.addSlide();
+      const frame = fitImageToSlide(viewport.width, viewport.height, slideWidthPt, slideHeightPt);
+      slide.addImage({
+        data: imageData,
+        x: toInches(frame.x),
+        y: toInches(frame.y),
+        w: toInches(frame.w),
+        h: toInches(frame.h)
       });
+      imageData = null;
     }
 
     if (cancelled) return postCancelled();
 
-    postStatus('產生 PPTX', 80);
+    postStatus('輸出 PPTX', 90);
     postLog('建立 PPTX 投影片。');
 
-    const pptxBuffer = await buildPptx(pages, fileName);
-
+    const base64 = await pptx.write({ outputType: 'base64' });
+    const bytes = base64ToBytes(base64);
+    postLog(`PPTX 產生完成（${formatBytes(bytes.length)}）。`);
     postStatus('完成輸出', 95);
 
     const outputName = toPptxName(fileName);
@@ -80,48 +103,28 @@ async function handleStart(payload) {
       {
         type: 'RESULT',
         payload: {
-          buffer: pptxBuffer,
+          buffer: bytes.buffer,
           fileName: outputName
         }
       },
-      [pptxBuffer]
+      [bytes.buffer]
     );
   } catch (err) {
     postError(err);
   }
 }
 
-function extractTextItems(textContent, pageHeight) {
-  return textContent.items
-    .filter((item) => item.str && item.str.trim().length > 0)
-    .map((item) => {
-      const [a, b, c, d, e, f] = item.transform;
-      const fontSize = Math.max(8, Math.abs(d) || item.height || 12);
-      const width = Math.max(item.width || 0, fontSize * 0.4);
-      const height = Math.max(item.height || fontSize, fontSize);
-      const x = e;
-      const yTop = pageHeight - f - height;
+async function renderPageImage(page, scale, imageFormat, jpegQuality) {
+  if (!self.OffscreenCanvas) {
+    throw new Error('此環境不支援 OffscreenCanvas，無法渲染 PDF 頁面影像。');
+  }
 
-      return {
-        text: item.str,
-        x: toInches(Math.max(0, x)),
-        y: toInches(Math.max(0, yTop)),
-        w: toInches(width),
-        h: toInches(height),
-        fontSize: Math.round(fontSize),
-        raw: { a, b, c, d }
-      };
-    });
-}
-
-async function renderPageBackground(page) {
-  if (!self.OffscreenCanvas) return null;
-
-  const scale = 1.2;
   const viewport = page.getViewport({ scale });
   const canvas = new OffscreenCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
   const context = canvas.getContext('2d', { alpha: false });
-  if (!context) return null;
+  if (!context) {
+    throw new Error('無法取得 Canvas 2D context，頁面渲染失敗。');
+  }
 
   const renderTask = page.render({
     canvasContext: context,
@@ -129,56 +132,69 @@ async function renderPageBackground(page) {
   });
   await renderTask.promise;
 
-  const blob = await canvas.convertToBlob({ type: 'image/png' });
+  const mimeType = imageFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const blob = await canvas.convertToBlob({
+    type: mimeType,
+    quality: imageFormat === 'jpeg' ? jpegQuality : undefined
+  });
   const buffer = await blob.arrayBuffer();
   const base64 = arrayBufferToBase64(buffer);
-  return `data:image/png;base64,${base64}`;
+  return `data:${mimeType};base64,${base64}`;
 }
 
-async function buildPptx(pages, fileName) {
-  const pptx = new pptxgen();
+function normalizeScale(value) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale)) return DEFAULT_RENDER_SCALE;
+  return Math.min(3, Math.max(1, scale));
+}
 
-  if (pages.length > 0) {
-    const layoutName = 'PDF_LAYOUT';
-    const widthIn = toInches(pages[0].width);
-    const heightIn = toInches(pages[0].height);
-    pptx.defineLayout({ name: layoutName, width: widthIn, height: heightIn });
-    pptx.layout = layoutName;
-  }
+function normalizeFormat(value) {
+  if (value === 'jpeg') return 'jpeg';
+  return 'png';
+}
 
-  pages.forEach((page, index) => {
-    const slide = pptx.addSlide();
+function normalizeJpegQuality(value) {
+  const quality = Number(value);
+  if (!Number.isFinite(quality)) return DEFAULT_JPEG_QUALITY;
+  return Math.min(1, Math.max(0.4, quality));
+}
 
-    if (page.backgroundData) {
-      slide.background = { data: page.backgroundData };
-    }
-
-    if (page.width && page.height && index === 0) {
-      postLog(`投影片尺寸：${page.width.toFixed(1)}x${page.height.toFixed(1)} points`);
-    }
-
-    page.textItems.forEach((item) => {
-      slide.addText(item.text, {
-        x: item.x,
-        y: item.y,
-        w: item.w,
-        h: item.h,
-        fontSize: item.fontSize,
-        color: '2D2D2D'
-      });
+async function loadPdf(buffer) {
+  try {
+    const loadingTask = getDocument({
+      data: buffer,
+      cMapUrl: CMAP_URL,
+      cMapPacked: true,
+      standardFontDataUrl: STANDARD_FONT_URL
     });
-  });
+    return await loadingTask.promise;
+  } catch (err) {
+    postLog('CMap/字型資料載入失敗，改用預設模式重試。');
+    const fallbackTask = getDocument({ data: buffer });
+    return await fallbackTask.promise;
+  }
+}
 
-  postStatus('輸出 PPTX', 90);
-  const base64 = await pptx.write({ outputType: 'base64' });
-  const bytes = base64ToBytes(base64);
-  postLog(`PPTX 產生完成（${formatBytes(bytes.length)}）。`);
-  return bytes.buffer;
+function fitImageToSlide(pageWidthPt, pageHeightPt, slideWidthPt, slideHeightPt) {
+  const scale = Math.min(slideWidthPt / pageWidthPt, slideHeightPt / pageHeightPt);
+  const w = pageWidthPt * scale;
+  const h = pageHeightPt * scale;
+  const x = (slideWidthPt - w) / 2;
+  const y = (slideHeightPt - h) / 2;
+  return { x, y, w, h };
 }
 
 function toPptxName(fileName) {
-  if (!fileName) return 'notebooklm-export.pptx';
-  return fileName.replace(/\.pdf$/i, '') + '.pptx';
+  const base = sanitizeFileName(fileName);
+  if (base.toLowerCase().endsWith('.pptx')) return base;
+  if (base.toLowerCase().endsWith('.pdf')) return base.slice(0, -4) + '.pptx';
+  return `${base}.pptx`;
+}
+
+function sanitizeFileName(fileName) {
+  if (!fileName) return 'notebooklm-export';
+  const base = String(fileName).split(/[/\\]/).pop();
+  return base || 'notebooklm-export';
 }
 
 function base64ToBytes(base64) {

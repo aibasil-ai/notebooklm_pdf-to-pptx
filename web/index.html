@@ -41,6 +41,34 @@
           <span class="file-meta__size">—</span>
         </div>
 
+        <div class="options">
+          <div class="option">
+            <label class="option__label" for="scaleInput">影像解析度</label>
+            <div class="option__row">
+              <input
+                id="scaleInput"
+                class="option__range"
+                type="range"
+                min="1"
+                max="3"
+                step="0.25"
+                value="2"
+              />
+              <span class="option__value" id="scaleValue">2.0x</span>
+            </div>
+            <p class="option__hint">數值越高越清晰，但處理時間與檔案大小會增加。</p>
+          </div>
+
+          <div class="option">
+            <label class="option__label" for="formatSelect">輸出策略</label>
+            <select id="formatSelect" class="option__select">
+              <option value="quality" selected>清晰度優先（PNG，檔案較大）</option>
+              <option value="size">檔案大小優先（JPEG，畫質略降）</option>
+            </select>
+            <p class="option__hint">檔案大小優先會使用 JPEG 並略降畫質以縮小輸出。</p>
+          </div>
+        </div>
+
         <div class="actions">
           <button id="startBtn" class="btn btn--primary" disabled>開始轉換</button>
           <button id="cancelBtn" class="btn" disabled>中止</button>
